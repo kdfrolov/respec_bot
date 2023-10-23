@@ -6,3 +6,9 @@ export function getMainMenu() {
         ['Контакты']
     ]).resize();
 };
+
+export function getMakeTableStep1() {
+    return Markup.keyboard([
+        ['Шаг 1', 'Отмена']
+    ]).resize();
+};
