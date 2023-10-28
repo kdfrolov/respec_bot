@@ -1,119 +1,45 @@
-import TelegramBotClient from 'node-telegram-bot-api'
-import StateMachine from 'javascript-state-machine'
+import express from 'express';
+import { PORT, TOKEN } from './config.js';
+import { getMainMenu } from './keyboards.js';
+import { getMakeTableStep1 } from './keyboards.js';
+import { Telegraf } from 'telegraf';
+import session from './node_modules/telegraf/lib/session.js';
 
-function createFsm() {
-  return StateMachine.create({
-    initial: 'waitingstart',
-    final: 'final',
-    events: [
-      { name: 'gotstart', from: 'waitingstart', to: 'waitingname' },
-      { name: 'gotname', from: 'waitingname', to: 'echoing' },
-      { name: 'gottext', from: 'echoing', to: 'echoing' },
-      { name: 'gotstop', from: 'echoing', to: 'confirm' },
-      { name: 'confirmed', from: 'confirm', to: 'final' },
-      { name: 'cancelled', from: 'confirm', to: 'echoing' },
-      { name: 'invalid', from: 'confirm', to: 'confirm' }
-    ]
-  })
-}
+const app = express();
+const bot = new Telegraf(TOKEN);
 
-function eventFromStateAndMessageText(state, text) {
-  switch (state) {
-  case 'waitingstart':
-    return text === '/start' && 'gotstart'
-    break
-  case 'waitingname':
-    return 'gotname'
-    break
-  case 'echoing':
-    return text === '/stop' ? 'gotstop' : 'gottext'
-    break
-  case 'confirm':
-    if (text === 'yes') {
-      return 'confirmed'
-    } else if (text === 'no') {
-      return 'cancelled'
-    } else {
-      return 'invalid'
-    }
-  }
-}
+bot.start(ctx => {
+    ctx.replyWithHTML('Вас приветсвует <b>Telegram Bot</b> компании <b>Respec</b>', getMainMenu())
+});
 
-export default class Bot {
-  constructor(token) {
-    this.client = new TelegramBotClient(token, { polling: true })
-  }
+bot.hears("Контакты", ctx => {
+    ctx.replyWithHTML('<b>Свяжитесь с нами:</b>\n\n'+
+    'Номер телефона/WhatsApp: +79162881544\n\n'+
+    'Telegram: @respec80\n\n'+
+    'Telegram-канал: @respec554\n\n'+
+    'VK: https://vk.com/respec554\n\n',
+    getMainMenu())
+});
 
-  start() {
-    this.client.on('message', message => {
-      if (!message.reply_to_message) {
-        this.respondTo(message)
-      }
-    })
-  }
+bot.hears("Мои сметы", ctx => {
+    let id = ctx.from.id;
+    ctx.replyWithHTML(`${id}`)
+});
 
-  async respondTo(message) {
-    let fsm = createFsm()
-    let lastReply = message
+bot.hears("Создать смету", ctx => {
+    let id = ctx.from.id;
+    ctx.replyWithHTML(`Для создания сметы нам необходимо задать вам несколько вопросов, для этого нажмите <b>Шаг 1</b>`,
+    getMakeTableStep1())
+});
 
-    let name
-    let lastMessage
+bot.hears("Отмена", ctx => {
+    ctx.replyWithHTML('Выход в главное меню', 
+    getMainMenu())
+});
 
-    fsm.ongotstart = () => {
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            'Let\'s begin! What\'s your name?',
-                                            { reply_markup: JSON.stringify({ force_reply: true }) })
-    }
+bot.on('text', ctx => {
+    ctx.reply('Я не знаю такой команды')
+});
 
-    fsm.ongotname = (event, from, to, message) => {
-      name = message.text
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            `Got it ${name}, I'll begin echoing your replies until you respond with /stop`,
-                                            { reply_markup: JSON.stringify({ force_reply: true }) })
-    }
-
-    fsm.ongottext = (event, from, to, message) => {
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            `Echoing for ${name}: ${message.text}`,
-                                            { reply_markup: JSON.stringify({ force_reply: true }) })
-    }
-
-    fsm.ongotstop = () => {
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            'Are you sure you want to stop? (yes/no)',
-                                            { reply_markup: JSON.stringify({ force_reply: true }) })
-    }
-
-    fsm.onconfirmed = () => {
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            'We\'re done here, see ya!')
-    }
-
-    fsm.oncancelled = () => {
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            'Alright, going back to echoing',
-                                            { reply_markup: JSON.stringify({ force_reply: true }) })
-    }
-
-    fsm.oninvalid = () => {
-      lastMessage = this.client.sendMessage(message.chat.id,
-                                            'Sorry, I didn\'t catch that, do you want to cancel? (yes/no)',
-                                            { reply_markup: JSON.stringify({ force_reply: true }) })
-    }
-
-    while (!fsm.isFinished()) {
-      let text = lastReply.text
-      let event = eventFromStateAndMessageText(fsm.current, text)
-
-      if (!event || fsm.cannot(event)) {
-        this.client.sendMessage(message.chat.id, 'I wasn\'t expecting that, try /start')
-        break
-      }
-
-      fsm[event](lastReply)
-
-      let sentMessage = await lastMessage
-      lastReply = await new Promise(resolve => this.client.onReplyToMessage(sentMessage.chat.id, sentMessage.message_id, resolve))
-    }
-  }
-}
+bot.launch();
+app.listen(PORT, () => console.log(`My server is running on port ${PORT}`));
